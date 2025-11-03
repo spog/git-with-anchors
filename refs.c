@@ -157,6 +157,9 @@ struct ref_namespace_info ref_namespace[] = {
 		 */
 		.ref = "refs/rewritten/",
 	},
+	[NAMESPACE_ANCHORS] = {
+		.ref = "refs/anchors/",
+	},
 };
 
 void update_ref_namespace(enum ref_namespace namespace, char *ref)
@@ -487,6 +490,11 @@ void refs_warn_dangling_symrefs(struct ref_store *refs, FILE *fp,
 int refs_for_each_tag_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data)
 {
 	return refs_for_each_ref_in(refs, "refs/tags/", fn, cb_data);
+}
+
+int refs_for_each_anchor_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data)
+{
+	return refs_for_each_ref_in(refs, "refs/anchors/", fn, cb_data);
 }
 
 int refs_for_each_branch_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data)
