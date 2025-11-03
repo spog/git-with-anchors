@@ -37,6 +37,7 @@ struct git_transport_options {
 	const char *receivepack;
 	struct push_cas_option *cas;
 	struct list_objects_filter_options filter_options;
+	int anchored;
 
 	/*
 	 * This is only used during fetch. See the documentation of
@@ -238,6 +239,9 @@ void transport_check_allowed(const char *type);
 
 /* Require remote changes to be integrated locally. */
 #define TRANS_OPT_FORCE_IF_INCLUDES "force-if-includes"
+
+/* Record missing shallow parents as anchors */
+#define TRANS_OPT_ANCHORED "anchored"
 
 /**
  * Returns 0 if the option was used, non-zero otherwise. Prints a

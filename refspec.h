@@ -2,6 +2,7 @@
 #define REFSPEC_H
 
 #define TAG_REFSPEC "refs/tags/*:refs/tags/*"
+#define ANCHOR_REFSPEC "refs/anchors/*:refs/anchors/*"
 
 /**
  * A struct refspec_item holds the parsed interpretation of a refspec.  If it
