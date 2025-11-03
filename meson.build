@@ -276,6 +276,7 @@ libgit_sources = [
   'advice.c',
   'alias.c',
   'alloc.c',
+  'anchor.c',
   'apply.c',
   'archive-tar.c',
   'archive-zip.c',
