@@ -1,0 +1,8 @@
+Further cleanup/reorder/rewrite of my anchors commits.
+
+Rebase my anchors commits to latest git-main...
+
+Add a command to retire/backup some history of a local repository.
+
+Fix tests, which use --depth or --deepen, because they want to create
+signed anchors by default, which does not work automatically.

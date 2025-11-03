@@ -47,6 +47,7 @@
 #include "hook.h"
 #include "bundle.h"
 #include "bundle-uri.h"
+#include "anchors.h"
 
 /*
  * Overall FIXMEs:
@@ -907,6 +908,7 @@ int cmd_clone(int argc,
 	struct string_list server_options = STRING_LIST_INIT_NODUP;
 	const char *bundle_uri = NULL;
 	char *option_rev = NULL;
+	int option_anchored = 1;
 
 	struct clone_opts opts = CLONE_OPTS_INIT;
 
@@ -991,6 +993,7 @@ int cmd_clone(int argc,
 			 N_("initialize sparse-checkout file to include only files at root")),
 		OPT_STRING(0, "bundle-uri", &bundle_uri,
 			   N_("uri"), N_("a URI for downloading bundles before fetching from origin remote")),
+		OPT_BOOL(0, "anchored", &option_anchored, N_("record missing shallow parents as anchors")),
 		OPT_END()
 	};
 
@@ -1364,6 +1367,8 @@ int cmd_clone(int argc,
 	die_for_incompatible_opt2(!!option_rev, "--revision",
 				  option_mirror, "--mirror");
 
+	transport_set_option(transport, TRANS_OPT_ANCHORED, (char *)&option_anchored);
+
 	if (reject_shallow)
 		transport_set_option(transport, TRANS_OPT_REJECT_SHALLOW, "1");
 	if (option_depth)
@@ -1415,6 +1420,9 @@ int cmd_clone(int argc,
 		 * specified --branch, whose argument might be a tag.
 		 */
 		refspec_append(&remote->fetch, TAG_REFSPEC);
+
+	if (option_anchored)
+		refspec_append(&remote->fetch, ANCHOR_REFSPEC);
 
 	refspec_ref_prefixes(&remote->fetch,
 			     &transport_ls_refs_options.ref_prefixes);
@@ -1602,6 +1610,9 @@ int cmd_clone(int argc,
 	update_remote_refs(refs, mapped_refs, remote_head_points_at,
 			   branch_top.buf, reflog_msg.buf, transport,
 			   !is_local);
+
+	if (option_anchored)
+		update_anchors();
 
 	update_head(&opts, our_head_points_at, remote_head, unborn_head, reflog_msg.buf);
 

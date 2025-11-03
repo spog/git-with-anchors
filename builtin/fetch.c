@@ -38,6 +38,7 @@
 #include "promisor-remote.h"
 #include "commit-graph.h"
 #include "shallow.h"
+#include "anchors.h"
 #include "trace.h"
 #include "trace2.h"
 #include "bundle-uri.h"
@@ -88,6 +89,7 @@ static int verbosity, deepen_relative, set_upstream, refetch;
 static int progress = -1;
 static int tags = TAGS_DEFAULT, update_shallow, deepen;
 static int atomic_fetch;
+static int anchored = 1;
 static enum transport_family family;
 static const char *depth;
 static const char *deepen_since;
@@ -1460,6 +1462,9 @@ static struct transport *prepare_transport(struct remote *remote, int deepen)
 		set_option(transport, TRANS_OPT_UPLOADPACK, upload_pack);
 	if (keep)
 		set_option(transport, TRANS_OPT_KEEP, "yes");
+	if (anchored)
+		update_shallow = 1;
+	transport_set_option(transport, TRANS_OPT_ANCHORED, (char *)&anchored);
 	if (depth)
 		set_option(transport, TRANS_OPT_DEPTH, depth);
 	if (deepen && deepen_since)
@@ -2278,6 +2283,9 @@ static int fetch_one(struct remote *remote, int argc, const char **argv,
 	if (maybe_prune_tags && (argc || !remote_via_config))
 		refspec_append(&rs, TAG_REFSPEC);
 
+	if (anchored)
+		refspec_append(&remote->fetch, ANCHOR_REFSPEC);
+
 	for (i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "tag")) {
 			i++;
@@ -2383,6 +2391,8 @@ int cmd_fetch(int argc,
 		OPT_BOOL('u', "update-head-ok", &update_head_ok,
 			    N_("allow updating of HEAD ref")),
 		OPT_BOOL(0, "progress", &progress, N_("force progress reporting")),
+		OPT_BOOL(0, "anchored", &anchored,
+			 N_("record missing shallow parents as anchors")),
 		OPT_STRING(0, "depth", &depth, N_("depth"),
 			   N_("deepen history of shallow clone")),
 		OPT_STRING(0, "shallow-since", &deepen_since, N_("time"),
@@ -2704,6 +2714,9 @@ int cmd_fetch(int argc,
 					     NULL);
 		trace2_region_leave("fetch", "write-commit-graph", the_repository);
 	}
+
+	if (anchored)
+		update_anchors();
 
 	if (enable_auto_gc) {
 		if (refetch) {
