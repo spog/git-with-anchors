@@ -27,7 +27,6 @@
 #include "refs.h"
 #include "oid-array.h"
 
-
 static int do_sign(struct strbuf *buffer, struct object_id **compat_oid,
 		   struct object_id *compat_oid_buf)
 {
@@ -70,12 +69,12 @@ out:
 }
 
 /*
- * create_anchor_tag():
- * Create an annotated tag object linking <child_oid> to <missing_parent_oid>.
+ * Create an annotated tag object linking a boundary <child_oid> to
+ * one of its <missing_parent_oid>s.
  * If sign != 0, use existing tag signing mechanism to add gpgsig.
  * Returns 0 on success and sets result_oid.
  */
-int create_anchor_tag(const struct object_id *child_oid,
+static int create_anchor_tag(const struct object_id *child_oid,
 		      const struct object_id *missing_parent_oid,
 		      const char *tagger_ident,
 		      int sign,
@@ -122,19 +121,19 @@ out:
 
 /*
  * Install anchor refs:
- *   refs/anchors/<missing_parent_oid>/<child_oid>
+ *   refs/anchors/<child_oid/<missing_parent_oid>
  * Ref content:
  *   <anchor_tag_oid>
  */
-static void create_anchor_ref(const struct object_id *missing_parent_oid,
-			      const struct object_id *child_oid,
+static void create_anchor_ref(const struct object_id *child_oid,
+			      const struct object_id *missing_parent_oid,
 			      const struct object_id *anchor_tag_oid)
 {
 	struct repository *r = the_repository;
 	struct strbuf ref = STRBUF_INIT;
 	strbuf_addf(&ref, "refs/anchors/%s/%s",
-		    oid_to_hex(missing_parent_oid),
-		    oid_to_hex(child_oid));
+		    oid_to_hex(child_oid),
+		    oid_to_hex(missing_parent_oid));
 
 	if (refs_update_ref(get_main_ref_store(r), NULL, ref.buf, anchor_tag_oid,
 			    NULL, REF_NO_DEREF, UPDATE_REFS_MSG_ON_ERR))
@@ -144,14 +143,10 @@ static void create_anchor_ref(const struct object_id *missing_parent_oid,
 }
 
 /*
- * create_anchos_v2():
- * Create anchors (references and tag ojects) for a shallow boundary commit (child_oid).
- * Anchor refs:
- *   refs/anchors/<missing_parent_oid>/<child_oid>
- * Ref content:
- *   <anchor_tag_oid>
+ * Create anchors (anchor tags and references) for a grafted shallow
+ * boundary commit (child_oid).
  */
-void create_anchors_v2(const struct object_id *child_oid)
+static void create_boundary_anchors(const struct object_id *child_oid)
 {
 	struct repository *r = the_repository;
 	struct commit *c;
@@ -187,30 +182,30 @@ void create_anchors_v2(const struct object_id *child_oid)
 				oid_to_hex(&p->item->object.oid));
 		}
 
-		/* install ref: refs/anchors/<parent>/<child>: <tag_oid> */
-		create_anchor_ref(&p->item->object.oid, child_oid, &tag_oid);
+		/* install ref: refs/anchors/<child>/<parent>: <tag_oid> */
+		create_anchor_ref(child_oid, &p->item->object.oid, &tag_oid);
 	}
 	register_shallow(r, &o->oid);
 }
 
+static int create_one_anchor(const struct commit_graft *graft, void *cb_data)
+{
+	struct commit *c;
+	if (graft->nr_parent != -1)
+		return 0;
+
+	if ((c = lookup_commit(the_repository, &graft->oid)))
+		create_boundary_anchors(&c->object.oid);
+	return 0;
+}
+
 /*
- * create_anchors():
- * For each shallow boundary commit (info->shallow list), find missing parents
- * and create an anchor tag object for each missing parent linking the child
- * (boundry commit) to the missing parent.
+ * For each shallow boundary commit, find missing parents and create
+ * an anchor tag object for each missing parent linking the child
+ * (boundary commit) to its missing parentis.
  * Also create anchor refs to all anchor tags.
  */
-void create_anchors(struct shallow_info *info)
+void create_anchors(void)
 {
-	struct repository *r = the_repository;
-	struct commit **list = info->commits;
-	struct object_id *oid = info->shallow->oid;
-	int i;
-
-	printf("SPOG: %s(): info->nr_commits=%ld, info->nr_ours=%ld, info->nr_theirs=%ld\n", __func__, info->nr_commits, info->nr_ours, info->nr_theirs);
-	printf("SPOG: %s(): info->shallow->nr=%ld\n", __func__, info->shallow->nr);
-	for (i = 0; i < info->shallow->nr; i++) {
-		printf("SPOG: %s(): oid[i]=%s\n", __func__, oid_to_hex(&oid[i]));
-		
-	}
+	for_each_commit_graft(create_one_anchor, NULL);
 }
