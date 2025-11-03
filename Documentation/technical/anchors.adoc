@@ -1,0 +1,159 @@
+= Git Anchors Specification
+:toc:
+:sectnums:
+
+== Objective
+
+To enable *bounded Git subgraphs* (partial repository histories) to be served and verified *accurately*, using *anchor references* that cryptographically declare each missing parent relationship at the subgraph’s boundary — without altering commit identities or rewriting history.
+
+Anchors preserve Git’s DAG integrity properties for the reachable portion of history and provide verifiable truncation points.
+
+== Anchor Concept
+
+A *Git anchor* establishes an explicit, verifiable relationship between:
+
+* a *child commit* (`<child_oid>`) at the boundary of the subgraph, and
+* all its *missing parent commits* (`<missing_parent_oid>`) outside the served subgraph
+
+Anchors are materialized as *annotated tag objects*, optionally *signed* using standard Git tag GPG/SSH signing.
+
+Each anchor defines:
+
+  “Commit `<child_oid>` claims to have a parent `<missing_parent_oid>`.”
+
+== Storage Layout
+
+Anchor references are stored under:
+
+----
+refs/anchors/<child_oid>/<missing_parent_oid>
+----
+
+With content:
+
+----
+<anchor_tag_oid>
+----
+
+Where:
+
+* `<child_oid>` – SHA-1/256 of the *boundary commit* within the subgraph.
+* `<missing_parent_oid>` – SHA-1/256 of the *omitted parent* commit.
+* `<anchor_tag_oid>` – SHA-1/256 of the tag object serving as the anchor record.
+
+This structure permits multiple children (boundary commits) to reference the same missing parent without conflict.
+
+== Anchor Tag Object Format
+
+Anchors reuse the format and mechanics of *annotated tags*.
+The tag object referenced by `<anchor_tag_oid>` has the following fields:
+
+----
+object <child_oid>
+type commit
+tag anchor-<child_oid>-<missing_parent_oid>
+tagger <tagger-ident> <timestamp> <timezone>
+
+anchor-parent <missing_parent_oid>
+[optional signature block]
+----
+
+=== Notes
+
+* `anchor-parent` is an additional header (similar to `gpgsig` or `mergetag`) specifying the hash of the missing parent.
+* The tag message body is optional and typically empty.
+* The tag may be signed using standard Git tag signing (`-s` or `-u`).
+
+== Trust and Verification Semantics
+
+=== Trust Model
+
+* Anchor tag objects are part of the repository object store.
+* Their references (`refs/anchors/*`) are served alongside `refs/heads/*` and `refs/tags/*`.
+* Trust in anchor correctness may be:
+** *implicit* (server-provided), or
+** *explicit* (verified via tag signature).
+
+=== Verification Algorithm (anchor-aware `git fsck`)
+
+For each `<child_oid>` in `refs/anchors/*`:
+
+. Verify that `<anchor_tag_oid>` is a valid tag object.
+. Verify that its `object` field matches `<child_oid>`.
+. Verify that `anchor-parent` field equals `<missing_parent_oid>` as encoded in the ref path.
+. Verify tag signature if present.
+. Record that `<child_oid>` legitimately claims missing parent `<missing_parent_oid>`.
+
+If any step fails, mark anchor invalid.
+
+== Serving Anchored Repositories
+
+=== Advertisement
+
+`git-upload-pack` (and other transport mechanisms) advertise `refs/anchors/*` when present, similar to tags, optionally behind a capability flag (e.g., `allow-anchors`).
+
+=== Fetch/Clone Behavior
+
+Clients that support anchors:
+
+* Fetch anchor tag objects and `refs/anchors/*`.
+* Recognize boundary commits whose parent links point to missing objects declared in anchors.
+* Treat these commits as *anchored roots*, not broken DAG nodes.
+
+Clients without anchor support simply ignore these refs and see shallow history.
+
+== Object Integrity Closure
+
+Within the bounded repository:
+
+* For all reachable commits above the boundary, standard Git integrity applies (`H(commit) = hash(header + body)`).
+* For boundary commits, the anchor tag extends the integrity closure by declaring:
+
+----
+commit(child_oid) → anchor_tag(anchor_tag_oid) → anchor-parent(missing_parent_oid)
+----
+
+This preserves a verifiable *hash-chain statement* even though the parent object is absent.
+
+== Compatibility and Migration
+
+* Compatible with existing Git object formats.
+* Compatible with standard tag verification and GPG/SSH signing.
+* `git fsck`, `git fetch`, and `git push` require minor extensions to understand and preserve `refs/anchors/*`.
+* No commit rewriting or grafting needed.
+* Repositories remain backward-compatible with older clients. Older Git clients unaware of refs/anchors/* simply ignore those refs and operate as before (they see a shallow or incomplete repo). New clients obtain stronger guarantees when anchors are present and signed.
+
+== Example
+
+Assume commit `C2` is the first visible commit, and its real parent `P1` is missing.
+
+=== Anchor Creation
+
+----
+git clone <git_repo_url> --depth=N --anchored
+----
+
+=== Anchor Record
+
+----
+refs/anchors/C2/P1 -> <anchor_tag_oid>
+
+tag object contents:
+object C2
+type commit
+tag anchor-C2-P1
+tagger Alice <alice@example.com> 1730563200 +0100
+anchor-parent P1
+-----BEGIN PGP SIGNATURE-----
+...
+-----END PGP SIGNATURE-----
+----
+
+== Security and Accuracy Implications
+
+Anchors:
+
+* Preserve Git’s DAG integrity *up to the declared boundary*.
+* Are *cryptographically attestable* if signed.
+* Allow *multiple independent subgraphs* to share common ancestor identities.
+* Ensure *accuracy equivalence* with the full DAG for reachable commits (same correctness, less completeness).
