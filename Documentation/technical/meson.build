@@ -7,6 +7,7 @@ api_docs = [
 ]
 
 articles = [
+  'anchors.adoc',
   'bitmap-format.adoc',
   'build-systems.adoc',
   'bundle-uri.adoc',
