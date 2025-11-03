@@ -907,6 +907,7 @@ int cmd_clone(int argc,
 	struct string_list server_options = STRING_LIST_INIT_NODUP;
 	const char *bundle_uri = NULL;
 	char *option_rev = NULL;
+	int option_anchored = 0;
 
 	struct clone_opts opts = CLONE_OPTS_INIT;
 
@@ -991,6 +992,7 @@ int cmd_clone(int argc,
 			 N_("initialize sparse-checkout file to include only files at root")),
 		OPT_STRING(0, "bundle-uri", &bundle_uri,
 			   N_("uri"), N_("a URI for downloading bundles before fetching from origin remote")),
+		OPT_BOOL(0, "anchored", &option_anchored, N_("record missing shallow parents as anchors")),
 		OPT_END()
 	};
 
@@ -1369,6 +1371,9 @@ int cmd_clone(int argc,
 	if (option_depth)
 		transport_set_option(transport, TRANS_OPT_DEPTH,
 				     option_depth);
+	if (option_anchored)
+		transport_set_option(transport, TRANS_OPT_ANCHORED,
+				     "1");
 	if (option_since)
 		transport_set_option(transport, TRANS_OPT_DEEPEN_SINCE,
 				     option_since);
