@@ -172,7 +172,10 @@ struct commit_list *get_shallow_commits(struct object_array *heads, int depth,
 		    (is_repository_shallow(the_repository) && !commit->parents &&
 		     (graft = lookup_commit_graft(the_repository, &commit->object.oid)) != NULL &&
 		     graft->nr_parent < 0)) {
-			commit_list_insert(commit, &result);
+			/* when many debug prints are added, multiple same
+			 * grafted commits may appear in 'shallow' */
+			if (!commit_list_contains(commit, result))
+				commit_list_insert(commit, &result);
 			commit->object.flags |= shallow_flag;
 			commit = NULL;
 			continue;
