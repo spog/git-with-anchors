@@ -1421,6 +1421,8 @@ int cmd_clone(int argc,
 		 */
 		refspec_append(&remote->fetch, TAG_REFSPEC);
 
+	refspec_append(&remote->fetch, ANCHOR_REFSPEC);
+
 	refspec_ref_prefixes(&remote->fetch,
 			     &transport_ls_refs_options.ref_prefixes);
 	if (option_branch)

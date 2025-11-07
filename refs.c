@@ -157,6 +157,9 @@ struct ref_namespace_info ref_namespace[] = {
 		 */
 		.ref = "refs/rewritten/",
 	},
+	[NAMESPACE_ANCHORS] = {
+		.ref = "refs/anchors/",
+	},
 };
 
 void update_ref_namespace(enum ref_namespace namespace, char *ref)
