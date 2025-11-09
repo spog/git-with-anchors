@@ -8,7 +8,9 @@
 #ifndef ANCHOR_H
 #define ANCHOR_H
 
-/* Create all anchors (tag ojects with refs) */
-void create_anchors(void);
+/* Create all needed anchors (tag ojects with refs) */
+void create_anchors(struct ref *refs);
+
+void verify_anchors(struct ref *refs, int new);
 
 #endif /* ANCHOR_H */
