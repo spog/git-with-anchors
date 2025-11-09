@@ -35,7 +35,6 @@
 #include "sigchain.h"
 #include "mergesort.h"
 #include "prio-queue.h"
-#include "anchors.h"
 
 static int transfer_unpack_limit = -1;
 static int fetch_unpack_limit = -1;
@@ -2128,8 +2127,6 @@ struct ref *fetch_pack(struct fetch_pack_args *args,
 	}
 
 	update_shallow(args, sought, nr_sought, &si);
-	if (args->anchored)
-		create_anchors();
 cleanup:
 	clear_shallow_info(&si);
 	oid_array_clear(&shallows_scratch);

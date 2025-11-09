@@ -381,6 +381,8 @@ int refs_for_each_ref_in(struct ref_store *refs, const char *prefix,
 			 each_ref_fn fn, void *cb_data);
 int refs_for_each_tag_ref(struct ref_store *refs,
 			  each_ref_fn fn, void *cb_data);
+int refs_for_each_anchor_ref(struct ref_store *refs,
+			     each_ref_fn fn, void *cb_data);
 int refs_for_each_branch_ref(struct ref_store *refs,
 			     each_ref_fn fn, void *cb_data);
 int refs_for_each_remote_ref(struct ref_store *refs,
