@@ -39,6 +39,11 @@ static int do_sign(struct strbuf *buffer, struct object_id **compat_oid,
 	char *keyid = get_signing_key();
 	int ret = -1;
 
+	if (!keyid) { /* proceed without signing */
+		ret = 0;
+		goto out;
+	}
+
 	if (sign_buffer(buffer, &sig, keyid))
 		goto out;
 
@@ -153,7 +158,7 @@ static void create_boundry_anchors(const struct object_id *child_oid)
 	struct repository *r = the_repository;
 	struct commit *c;
 	struct object *o;
-	int sign = 0; /* honor user signing config if desired */
+	int sign = 1; /* always try to sign, if keyid available */
 
 	if (!child_oid)
 		die("oops: (%s)", oid_to_hex(child_oid));
@@ -336,8 +341,7 @@ static int verify_anchor(struct ref *ref, struct commit_list **anchored_commits,
 	if (new)
 		anchor_tag_oid = &ref->new_oid;
 
-//	flags = GPG_VERIFY_VERBOSE;
-	flags = 0;
+	flags = GPG_VERIFY_OMIT_STATUS;
 	type = odb_read_object_info(the_repository->objects, anchor_tag_oid, NULL);
 	if (type != OBJ_TAG)
 		return error("%s: cannot verify a non-tag object of type %s.",
