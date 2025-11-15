@@ -167,6 +167,15 @@ uint64_t trace_performance_enter(void);
 #define trace_printf(...) trace_printf_key(&trace_default_key, __VA_ARGS__)
 
 /**
+ * printf_SPOG(), accepts "const char *format, ...".
+ */
+#define printf_SPOG(...)						    \
+	do {								    \
+		printf_SPOG_fl(__func__, __FILE__, __LINE__,		    \
+			       __VA_ARGS__);				    \
+	} while (0)
+
+/**
  * trace_printf_key(), accepts "struct trace_key *key, const char *format, ...".
  */
 #define trace_printf_key(key, ...)					    \
@@ -257,6 +266,9 @@ uint64_t trace_performance_enter(void);
 	} while (0)
 
 /* backend functions, use non-*fl macros instead */
+__attribute__((format (printf, 4, 5)))
+void printf_SPOG_fl(const char *func, const char *file, int line,
+			 const char *format, ...);
 __attribute__((format (printf, 4, 5)))
 void trace_printf_key_fl(const char *file, int line, struct trace_key *key,
 			 const char *format, ...);
