@@ -550,6 +550,7 @@ int cmd_push(int argc,
 {
 	int flags = 0;
 	int tags = 0;
+	int anchors = 0;
 	int push_cert = -1;
 	int rc;
 	const char *repo = NULL;	/* default repository */
@@ -567,6 +568,7 @@ int cmd_push(int argc,
 			    (TRANSPORT_PUSH_MIRROR|TRANSPORT_PUSH_FORCE)),
 		OPT_BOOL('d', "delete", &deleterefs, N_("delete refs")),
 		OPT_BOOL( 0 , "tags", &tags, N_("push tags (can't be used with --all or --branches or --mirror)")),
+		OPT_BOOL( 0 , "anchors", &anchors, N_("push anchors")),
 		OPT_BIT('n' , "dry-run", &flags, N_("dry run"), TRANSPORT_PUSH_DRY_RUN),
 		OPT_BIT( 0,  "porcelain", &flags, N_("machine-readable output"), TRANSPORT_PUSH_PORCELAIN),
 		OPT_BIT('f', "force", &flags, N_("force updates"), TRANSPORT_PUSH_FORCE),
@@ -619,8 +621,11 @@ int cmd_push(int argc,
 	else if (recurse_submodules == RECURSE_SUBMODULES_ONLY)
 		flags |= TRANSPORT_RECURSE_SUBMODULES_ONLY;
 
+
 	if (tags)
 		refspec_append(&rs, "refs/tags/*");
+	if (anchors)
+		refspec_append(&rs, "refs/anchors/*");
 
 	if (argc > 0)
 		repo = argv[0];

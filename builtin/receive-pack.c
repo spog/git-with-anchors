@@ -1305,22 +1305,42 @@ static void refuse_unconfigured_deny_delete_current(void)
 	rp_error("%s", _(refuse_unconfigured_deny_delete_current_msg));
 }
 
+static int make_unique_extra(const struct object_id *oid, void *vdata)
+{
+	struct oid_array *extra = vdata;
+	oid_array_append(extra, oid);
+	return 0;
+}
+
 static const struct object_id *command_singleton_iterator(void *cb_data);
 static int update_shallow_ref(struct command *cmd, struct shallow_info *si)
 {
 	struct shallow_lock shallow_lock = SHALLOW_LOCK_INIT;
 	struct oid_array extra = OID_ARRAY_INIT;
+	static struct oid_array extra1st = OID_ARRAY_INIT;
 	struct check_connected_options opt = CHECK_CONNECTED_INIT;
-	uint32_t mask = 1 << (cmd->index % 32);
+	struct command *next = cmd->next, *tmp;
+	static struct command *cmd1st = NULL;
+	uint32_t mask;
 	int i;
+
+	if (!cmd1st)
+		cmd1st = cmd;
 
 	trace_printf_key(&trace_shallow,
 			 "shallow: update_shallow_ref %s\n", cmd->ref_name);
-	for (i = 0; i < si->shallow->nr; i++)
-		if (si->used_shallow[i] &&
-		    (si->used_shallow[i][cmd->index / 32] & mask) &&
-		    !delayed_reachability_test(si, i))
-			oid_array_append(&extra, &si->shallow->oid[i]);
+	if (cmd1st == cmd) {
+		for (i = 0; i < si->shallow->nr; i++)
+			for (tmp = cmd1st; tmp; tmp = tmp->next) {
+				mask = 1 << (tmp->index % 32);
+				if (si->used_shallow[i] &&
+				    (si->used_shallow[i][tmp->index / 32] & mask) &&
+				    !delayed_reachability_test(si, i))
+					oid_array_append(&extra1st, &si->shallow->oid[i]);
+			}
+		oid_array_for_each_unique(&extra1st, make_unique_extra, &extra);
+	} else
+		oid_array_clear(&extra);
 
 	opt.env = tmp_objdir_env(tmp_objdir);
 	setup_alternate_shallow(&shallow_lock, &opt.shallow_file, &extra);
@@ -1329,6 +1349,9 @@ static int update_shallow_ref(struct command *cmd, struct shallow_info *si)
 		oid_array_clear(&extra);
 		return -1;
 	}
+	/* check_connected() above breaks the commands list - restore it
+	 * to process all anchors refs */
+	cmd->next = next;
 
 	commit_shallow_file(the_repository, &shallow_lock);
 
@@ -1338,6 +1361,9 @@ static int update_shallow_ref(struct command *cmd, struct shallow_info *si)
 	 */
 	for (i = 0; i < extra.nr; i++)
 		register_shallow(the_repository, &extra.oid[i]);
+
+	if (!next)
+		oid_array_clear(&extra1st);
 
 	si->shallow_ref[cmd->index] = 0;
 	oid_array_clear(&extra);
@@ -2664,6 +2690,16 @@ int cmd_receive_pack(int argc,
 			struct command *cmd;
 			for (cmd = commands; cmd; cmd = cmd->next)
 				cmd->error_string = "inconsistent push options";
+		}
+
+		if (!shallow_update) {
+			struct command *cmd;
+			for (cmd = commands; cmd; cmd = cmd->next)
+				if (cmd->ref_name)
+					if (starts_with(cmd->ref_name, "refs/anchors/")) {
+						shallow_update = 1;
+						break;
+					}
 		}
 
 		prepare_shallow_info(&si, &shallow);
