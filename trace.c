@@ -95,6 +95,29 @@ void trace_disable(struct trace_key *key)
 	key->need_close = 0;
 }
 
+static int prepare_SPOG_line(const char *func, const char *file, int line,
+			     struct strbuf *buf)
+{
+	struct timeval tv;
+	struct tm tm;
+	time_t secs;
+	char *cwd;
+
+	/* print current timestamp */
+	gettimeofday(&tv, NULL);
+	secs = tv.tv_sec;
+	localtime_r(&secs, &tm);
+	cwd = xgetcwd();
+	strbuf_addf(buf, "SPOG[%d=>%d][%s] %02d:%02d:%02d.%06ld %s():%s:%d ", getppid(), getpid(), cwd, tm.tm_hour, tm.tm_min,
+		    tm.tm_sec, (long) tv.tv_usec, func, file, line);
+	free(cwd);
+	/* align trace output (column 40 catches most files names in git) */
+	while (buf->len < 40)
+		strbuf_addch(buf, ' ');
+
+	return 1;
+}
+
 static int prepare_trace_line(const char *file, int line,
 			      struct trace_key *key, struct strbuf *buf)
 {
@@ -102,6 +125,7 @@ static int prepare_trace_line(const char *file, int line,
 	struct timeval tv;
 	struct tm tm;
 	time_t secs;
+	char *cwd;
 
 	if (!trace_want(key))
 		return 0;
@@ -114,8 +138,10 @@ static int prepare_trace_line(const char *file, int line,
 	gettimeofday(&tv, NULL);
 	secs = tv.tv_sec;
 	localtime_r(&secs, &tm);
-	strbuf_addf(buf, "%02d:%02d:%02d.%06ld %s:%d", tm.tm_hour, tm.tm_min,
+	cwd = xgetcwd();
+	strbuf_addf(buf, "[%d=>%d][%s] %02d:%02d:%02d.%06ld %s:%d", getppid(), getpid(), cwd, tm.tm_hour, tm.tm_min,
 		    tm.tm_sec, (long) tv.tv_usec, file, line);
+	free(cwd);
 	/* align trace output (column 40 catches most files names in git) */
 	while (buf->len < 40)
 		strbuf_addch(buf, ' ');
@@ -143,6 +169,19 @@ static void print_trace_line(struct trace_key *key, struct strbuf *buf)
 {
 	strbuf_complete_line(buf);
 	trace_write(key, buf->buf, buf->len);
+}
+
+static void vprintf_SPOG_fl(const char *func, const char *file, int line,
+			     const char *format, va_list ap)
+{
+	struct strbuf buf = STRBUF_INIT;
+
+	if (!prepare_SPOG_line(func, file, line, &buf))
+		return;
+
+	strbuf_vaddf(&buf, format, ap);
+	fprintf(stderr, "%s", buf.buf);
+	strbuf_release(&buf);
 }
 
 static void trace_vprintf_fl(const char *file, int line, struct trace_key *key,
@@ -228,6 +267,15 @@ static void trace_performance_vprintf_fl(const char *file, int line,
 
 	print_trace_line(&trace_perf_key, &buf);
 	strbuf_release(&buf);
+}
+
+void printf_SPOG_fl(const char *func, const char *file, int line,
+			 const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	vprintf_SPOG_fl(func, file, line, format, ap);
+	va_end(ap);
 }
 
 void trace_printf_key_fl(const char *file, int line, struct trace_key *key,
