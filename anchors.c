@@ -217,28 +217,15 @@ static int create_boundry_anchors_cb(const struct commit_graft *graft, void *cb_
  * (boundry commit) to its missing parentis.
  * Also build anchor refs to all anchor tags.
  */
-void create_anchors(struct ref *refs)
+void create_anchors(void)
 {
-	struct ref *r;
-	int anchors_received = 0;
 	int boundry_commits_nr = 0;
 
-	/* First check, if anchors already received */
-	for (r = refs; r; r = r->next) {
-		if (starts_with(r->name, "refs/anchors/")) {
-			anchors_received = 1;
-			fprintf(stdout, "Anchors received");
-			break;
-		}
-	}
-	if (!anchors_received) {
-		for_each_commit_graft(create_boundry_anchors_cb, (void *)&boundry_commits_nr);
-		if (!boundry_commits_nr)
-			return;
-		fprintf(stdout, "Anchors created");
-		verify_anchors(get_local_heads(), 1);
-	} else
-		verify_anchors(refs, 0);
+	for_each_commit_graft(create_boundry_anchors_cb, (void *)&boundry_commits_nr);
+	if (!boundry_commits_nr)
+		return;
+	fprintf(stdout, "Anchors created.\n");
+	verify_anchors(get_local_heads(), 1);
 }
 
 static timestamp_t parse_anchor_tag_date(const char *buf, const char *tail)
@@ -437,6 +424,19 @@ void verify_anchors(struct ref *refs, int new)
 	struct ref *r;
 	struct commit_list *anchored_commits = NULL;
 	struct commit_list *shallow_commits = NULL;
+	int anchors_received = 0;
+
+	/* First check, if anchors received */
+	if (!new) {
+		for (r = refs; r; r = r->next)
+			if (starts_with(r->name, "refs/anchors/")) {
+				anchors_received = 1;
+				fprintf(stdout, "Anchors received.\n");
+				break;
+			}
+		if (!anchors_received)
+			return;
+	}
 
 	for (r = refs; r; r = r->next) {
 		if (starts_with(r->name, "refs/anchors/"))
@@ -447,7 +447,7 @@ void verify_anchors(struct ref *refs, int new)
 	if (!anchored_commits)
 		return;
 
-	fprintf(stdout, ", verified");
+	fprintf(stdout, "Anchors verified");
 	for_each_commit_graft(list_shallow_commits, (void *)&shallow_commits);
 
 	if (commit_list_count(anchored_commits) != commit_list_count(shallow_commits))
@@ -462,5 +462,5 @@ void verify_anchors(struct ref *refs, int new)
 				break;
 	}
 
-	fprintf(stdout, " and anchored commits aligned with shallow (grafted) commits\n");
+	fprintf(stdout, " and aligned with shallow (grafted) commits.\n");
 }
