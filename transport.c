@@ -519,7 +519,10 @@ static int fetch_refs_via_pack(struct transport *transport,
 			  to_fetch, nr_heads, &data->shallow,
 			  &transport->pack_lockfiles, data->version);
 
-	create_anchors(refs);
+	if (data->options.anchored)
+		create_anchors();
+	else
+		verify_anchors(refs, 0);
 
 	data->finished_handshake = 0;
 	data->options.self_contained_and_connected =

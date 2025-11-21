@@ -9,7 +9,7 @@
 #define ANCHOR_H
 
 /* Create all needed anchors (tag ojects with refs) */
-void create_anchors(struct ref *refs);
+void create_anchors(void);
 
 void verify_anchors(struct ref *refs, int new);
 
