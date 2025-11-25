@@ -76,7 +76,7 @@ out:
 }
 
 /*
- * Build an annotated tag object linking a boundry <child_oid> to
+ * Build an annotated tag object linking a boundary <child_oid> to
  * one of its <missing_parent_oid>s.
  * If sign != 0, use existing tag signing mechanism to add gpgsig.
  * Returns 0 on success and sets result_oid.
@@ -150,10 +150,10 @@ static void build_anchor_ref(const struct object_id *child_oid,
 }
 
 /*
- * Create anchors (anchor tags and references) for a shallow boundary
- * commit (child_oid).
+ * Create anchors (anchor tags and references) for a grafted shallow
+ * boundary commit (child_oid).
  */
-static void create_boundry_anchors(const struct object_id *child_oid)
+static void create_boundary_anchors(const struct object_id *child_oid)
 {
 	struct repository *r = the_repository;
 	struct commit *c;
@@ -195,7 +195,7 @@ static void create_boundry_anchors(const struct object_id *child_oid)
 	register_shallow(r, &o->oid);
 }
 
-static int create_boundry_anchors_cb(const struct commit_graft *graft, void *cb_data)
+static int create_boundary_anchors_cb(const struct commit_graft *graft, void *cb_data)
 {
 	int count = *(int *)cb_data;
 	struct commit *c;
@@ -204,7 +204,7 @@ static int create_boundry_anchors_cb(const struct commit_graft *graft, void *cb_
 
 	if ((c = lookup_commit(the_repository, &graft->oid))) {
 		count++;
-		create_boundry_anchors(&c->object.oid);
+		create_boundary_anchors(&c->object.oid);
 	}
 	*(int *)cb_data = count;
 	return 0;
@@ -214,15 +214,15 @@ static int create_boundry_anchors_cb(const struct commit_graft *graft, void *cb_
  * Create all needed anchors, if not already received.
  * For each shallow boundary commit, find missing parents and build
  * an anchor tag object for each missing parent linking the child
- * (boundry commit) to its missing parentis.
+ * (boundary commit) to its missing parentis.
  * Also build anchor refs to all anchor tags.
  */
 void create_anchors(void)
 {
-	int boundry_commits_nr = 0;
+	int boundary_commits_nr = 0;
 
-	for_each_commit_graft(create_boundry_anchors_cb, (void *)&boundry_commits_nr);
-	if (!boundry_commits_nr)
+	for_each_commit_graft(create_boundary_anchors_cb, (void *)&boundary_commits_nr);
+	if (!boundary_commits_nr)
 		return;
 	fprintf(stdout, "Anchors created.\n");
 	verify_anchors(get_local_heads(), 1);
@@ -387,7 +387,7 @@ static int verify_anchor(struct ref *ref, struct commit_list **anchored_commits,
 			if (!commit_list_contains(c, *anchored_commits))
 				commit_list_insert(c, anchored_commits);
 		} else {
-			error("Anchored boundry commit object not found: '%s'", oid_to_hex(&item->tagged->oid));
+			error("Anchored boundary commit object not found: '%s'", oid_to_hex(&item->tagged->oid));
 			ret = 1;
 		}
 	}
@@ -408,7 +408,7 @@ static int list_shallow_commits(const struct commit_graft *graft, void *cb_data)
 		if (!commit_list_contains(c, *shallow_commits))
 			commit_list_insert(c, shallow_commits);
 	} else {
-		error("Shallow boundry commit object not found: '%s'", oid_to_hex(&graft->oid));
+		error("Shallow boundary commit object not found: '%s'", oid_to_hex(&graft->oid));
 		return 1;
 	}
 	return 0;
@@ -417,7 +417,7 @@ static int list_shallow_commits(const struct commit_graft *graft, void *cb_data)
 /*
  * For each anchor of shallow boundary commits, verify its anchor tag
  * object with signature (if present) and check that anchors and shallow
- * grafts cover the same shallow boundry commits.
+ * grafts cover the same shallow boundary commits.
  */
 void verify_anchors(struct ref *refs, int new)
 {
