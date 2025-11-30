@@ -745,6 +745,11 @@ core.useReplaceRefs::
 	option was given on the command line. See linkgit:git[1] and
 	linkgit:git-replace[1] for more information.
 
+core.useAnchors::
+	If set to `false`, behave as if code to support git anchors wasn't
+	present, or as if the `--no-anchored` option was given on the
+	command line. Defaults to true.
+
 core.multiPackIndex::
 	Use the multi-pack-index file to track multiple packfiles using a
 	single index. See linkgit:git-multi-pack-index[1] for more

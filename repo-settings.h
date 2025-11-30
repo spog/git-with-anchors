@@ -49,6 +49,12 @@ struct repo_settings {
 	 */
 	int read_replace_refs;
 
+	/*
+	 * By setting core.useAnchors=false (true by default), anchors
+	 * support is disabled for this git repository.
+	 */
+	int use_anchors;
+
 	struct fsmonitor_settings *fsmonitor; /* lazily loaded */
 
 	int index_version;
