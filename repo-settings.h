@@ -49,6 +49,8 @@ struct repo_settings {
 	 */
 	int read_replace_refs;
 
+	int use_anchors;
+
 	struct fsmonitor_settings *fsmonitor; /* lazily loaded */
 
 	int index_version;
