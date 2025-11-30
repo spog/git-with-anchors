@@ -30,6 +30,7 @@
 #include "fetch-negotiator.h"
 #include "fsck.h"
 #include "shallow.h"
+#include "anchors.h"
 #include "commit-reach.h"
 #include "commit-graph.h"
 #include "sigchain.h"
@@ -2120,6 +2121,7 @@ struct ref *fetch_pack(struct fetch_pack_args *args,
 	}
 
 	update_shallow(args, sought, nr_sought, &si);
+	update_anchors();
 cleanup:
 	clear_shallow_info(&si);
 	oid_array_clear(&shallows_scratch);

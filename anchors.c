@@ -28,6 +28,7 @@
 #include "oid-array.h"
 #include "remote.h"
 #include "anchors.h"
+#include "trace.h"
 
 static int do_sign(struct strbuf *buffer, struct object_id **compat_oid,
 		   struct object_id *compat_oid_buf)
@@ -152,6 +153,9 @@ static void build_anchor_ref(const struct object_id *child_oid,
 /*
  * Create anchors (anchor tags and references) for a grafted shallow
  * boundary commit (child_oid).
+ * Find commit's missing parents and build an anchor tag object and
+ * anchor ref for each missing parent.
+ * Also build anchor refs to all anchor tags.
  */
 static void create_boundary_anchors(const struct object_id *child_oid)
 {
@@ -211,11 +215,8 @@ static int create_boundary_anchors_cb(const struct commit_graft *graft, void *cb
 }
 
 /*
- * Create all needed anchors, if not already received.
- * For each shallow boundary commit, find missing parents and build
- * an anchor tag object for each missing parent linking the child
- * (boundary commit) to its missing parentis.
- * Also build anchor refs to all anchor tags.
+ * Create and verify all needed anchors.
+ * For each shallow boundary commit create its anchors
  */
 void create_anchors(void)
 {
@@ -226,6 +227,119 @@ void create_anchors(void)
 		return;
 	fprintf(stdout, "Anchors created.\n");
 	verify_anchors(get_local_heads(), 1);
+}
+
+static int filter_anchors_cb(const struct commit_graft *graft, void *cb_data)
+{
+	struct anchors_update_lists *update_anchors = (struct anchors_update_lists *)cb_data;
+	struct commit *c;
+	struct string_list_item *item;
+
+	if (graft->nr_parent != -1)
+		return 0;
+
+	update_anchors->refs_to_keep.strdup_strings = 1;
+	update_anchors->refs_to_delete.strdup_strings = 1;
+	if ((c = lookup_commit(the_repository, &graft->oid))) {
+		for_each_string_list_item(item, &update_anchors->refs) {
+			struct strbuf sb = STRBUF_INIT;
+			struct string_list_item *inserted_item;
+			strbuf_addf(&sb, "refs/anchors/%s", oid_to_hex(&c->object.oid));
+			if (starts_with(item->string, sb.buf)) {
+				/* anchors to keep */
+				inserted_item = string_list_insert(&update_anchors->refs_to_keep, item->string);
+			} else {
+				/* anchors to delete */
+				inserted_item = string_list_insert(&update_anchors->refs_to_delete, item->string);
+				inserted_item->util = oiddup(&c->object.oid);
+			}
+		}
+	}
+	string_list_remove_duplicates(&update_anchors->refs_to_keep, 0);
+	string_list_remove_duplicates(&update_anchors->refs_to_delete, 1);
+#if 0
+	for_each_string_list_item(item, &update_anchors->refs_to_keep)
+		printf_SPOG("to keep:   '%s'\n", item->string);
+	for_each_string_list_item(item, &update_anchors->refs_to_delete)
+		printf_SPOG("to delete: '%s'\n", item->string);
+#endif
+	return 0;
+}
+
+static int create_new_anchors_cb(const struct commit_graft *graft, void *cb_data)
+{
+	struct string_list *refs_to_keep = (struct string_list *)cb_data;
+	struct commit *c;
+	struct string_list_item *item;
+
+	if (graft->nr_parent != -1)
+		return 0;
+
+	if ((c = lookup_commit(the_repository, &graft->oid))) {
+		int skip_c = 0;
+		for_each_string_list_item(item, refs_to_keep) {
+			struct strbuf sb = STRBUF_INIT;
+			strbuf_addf(&sb, "refs/anchors/%s", oid_to_hex(&c->object.oid));
+			if (!starts_with(item->string, sb.buf))
+				skip_c = 1;
+		}
+		if (!skip_c) {
+			fprintf(stdout, "Create anchors for shallow commit '%s'\n", oid_to_hex(&c->object.oid));
+			create_boundary_anchors(&c->object.oid);
+		}
+	}
+	return 0;
+}
+
+static int append_anchor_ref(const struct reference *ref, void *cb_data)
+{
+	struct string_list *anchor_refs = (struct string_list *)cb_data;
+
+	if (starts_with(ref->name, "refs/anchors/"))
+		string_list_append(anchor_refs, ref->name);
+	return 0;
+}
+
+/*
+ * Update all needed anchors.
+ * Remove existing anchors and create new ones for each shallow
+ * boundary commit.
+ */
+void update_anchors(void)
+{
+	struct anchors_update_lists update_anchors = {
+		.refs = STRING_LIST_INIT_DUP,
+		.refs_to_keep = STRING_LIST_INIT_DUP,
+		.refs_to_delete = STRING_LIST_INIT_DUP,
+	};
+	struct string_list_item *item;
+
+	/* Get a list of current anchor refs */
+	refs_for_each_ref(get_main_ref_store(the_repository),
+			  append_anchor_ref, &update_anchors.refs);
+
+	/* Get lists of anchors to keep and anchors to delete */
+	for_each_commit_graft(filter_anchors_cb, (void *)&update_anchors);
+
+	/* Create all new anchors */
+	for_each_commit_graft(create_new_anchors_cb, (void *)&update_anchors.refs_to_keep);
+
+	/* Remove all anchors to be deleted */
+	if (refs_delete_refs(get_main_ref_store(the_repository), NULL, &update_anchors.refs_to_delete, REF_NO_DEREF))
+		die("oops: error deleting anchor refs");
+	for_each_string_list_item(item, &update_anchors.refs_to_delete) {
+		const char *name = item->string;
+		struct object_id *oid = item->util;
+
+		if (!refs_ref_exists(get_main_ref_store(the_repository), name))
+			fprintf(stdout, "Deleted anchor '%s'\n", item->string + 13);
+
+		free(oid);
+	}
+	string_list_clear(&update_anchors.refs_to_delete, 0);
+
+	fprintf(stdout, "Anchors updated.\n");
+//	verify_anchors(get_local_heads(), 1);
 }
 
 static timestamp_t parse_anchor_tag_date(const char *buf, const char *tail)
