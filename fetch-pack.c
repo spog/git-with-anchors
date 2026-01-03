@@ -2121,7 +2121,6 @@ struct ref *fetch_pack(struct fetch_pack_args *args,
 	}
 
 	update_shallow(args, sought, nr_sought, &si);
-	update_anchors();
 cleanup:
 	clear_shallow_info(&si);
 	oid_array_clear(&shallows_scratch);

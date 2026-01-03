@@ -29,7 +29,6 @@
 #include "object-name.h"
 #include "color.h"
 #include "bundle-uri.h"
-#include "anchors.h"
 
 static enum git_colorbool transport_use_color = GIT_COLOR_UNKNOWN;
 static char transport_colors[][COLOR_MAXLEN] = {
@@ -290,7 +289,7 @@ static int set_git_option(struct git_transport_options *opts,
 		opts->reject_shallow = !!value;
 		return 0;
 	} else if (!strcmp(name, TRANS_OPT_ANCHORED)) {
-		opts->anchored = !!value;
+		opts->anchored = *(int *)value;
 		return 0;
 	}
 	return 1;
@@ -518,11 +517,6 @@ static int fetch_refs_via_pack(struct transport *transport,
 			  refs_tmp ? refs_tmp : transport->remote_refs,
 			  to_fetch, nr_heads, &data->shallow,
 			  &transport->pack_lockfiles, data->version);
-
-	if (data->options.anchored)
-		create_anchors();
-	else
-		verify_anchors(refs, 0);
 
 	data->finished_handshake = 0;
 	data->options.self_contained_and_connected =

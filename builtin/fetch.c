@@ -38,6 +38,7 @@
 #include "promisor-remote.h"
 #include "commit-graph.h"
 #include "shallow.h"
+#include "anchors.h"
 #include "trace.h"
 #include "trace2.h"
 #include "bundle-uri.h"
@@ -88,7 +89,7 @@ static int verbosity, deepen_relative, set_upstream, refetch;
 static int progress = -1;
 static int tags = TAGS_DEFAULT, update_shallow, deepen;
 static int atomic_fetch;
-static int anchored = 0;
+static int anchored = 1;
 static enum transport_family family;
 static const char *depth;
 static const char *deepen_since;
@@ -1462,7 +1463,8 @@ static struct transport *prepare_transport(struct remote *remote, int deepen)
 	if (keep)
 		set_option(transport, TRANS_OPT_KEEP, "yes");
 	if (anchored)
-		transport_set_option(transport, TRANS_OPT_ANCHORED, "1");
+		update_shallow = 1;
+	transport_set_option(transport, TRANS_OPT_ANCHORED, (char *)&anchored);
 	if (depth)
 		set_option(transport, TRANS_OPT_DEPTH, depth);
 	if (deepen && deepen_since)
@@ -2281,7 +2283,8 @@ static int fetch_one(struct remote *remote, int argc, const char **argv,
 	if (maybe_prune_tags && (argc || !remote_via_config))
 		refspec_append(&rs, TAG_REFSPEC);
 
-	refspec_append(&remote->fetch, ANCHOR_REFSPEC);
+	if (anchored)
+		refspec_append(&remote->fetch, ANCHOR_REFSPEC);
 
 	for (i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "tag")) {
@@ -2711,6 +2714,9 @@ int cmd_fetch(int argc,
 					     NULL);
 		trace2_region_leave("fetch", "write-commit-graph", the_repository);
 	}
+
+	if (anchored)
+		update_anchors();
 
 	if (enable_auto_gc) {
 		if (refetch) {
