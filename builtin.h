@@ -224,6 +224,7 @@ int cmd_restore(int argc, const char **argv, const char *prefix, struct reposito
 int cmd_rev_list(int argc, const char **argv, const char *prefix, struct repository *repo);
 int cmd_rev_parse(int argc, const char **argv, const char *prefix, struct repository *repo);
 int cmd_revert(int argc, const char **argv, const char *prefix, struct repository *repo);
+int cmd_retire(int argc, const char **argv, const char *prefix, struct repository *repo);
 int cmd_rm(int argc, const char **argv, const char *prefix, struct repository *repo);
 int cmd_send_pack(int argc, const char **argv, const char *prefix, struct repository *repo);
 int cmd_shortlog(int argc, const char **argv, const char *prefix, struct repository *repo);

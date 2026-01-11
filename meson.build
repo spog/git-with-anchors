@@ -659,6 +659,7 @@ builtin_sources = [
   'builtin/rev-list.c',
   'builtin/rev-parse.c',
   'builtin/revert.c',
+  'builtin/retire.c',
   'builtin/rm.c',
   'builtin/send-pack.c',
   'builtin/shortlog.c',
