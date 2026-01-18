@@ -48,8 +48,6 @@
 static const char * const builtin_retire_usage[] = {
 	N_("git retire [<options>] [<repository> [<refspec>...]]"),
 	N_("git retire [<options>] <group>"),
-	N_("git retire --multiple [<options>] [(<repository>|<group>)...]"),
-	N_("git retire --all [<options>]"),
 	NULL
 };
 
@@ -84,6 +82,11 @@ static int prune_tags = -1; /* unspecified */
 #define PRUNE_TAGS_BY_DEFAULT 0 /* do we prune tags by default? */
 
 static int append, dry_run, force, keep, update_head_ok;
+/*spog:
+ * Set update_head_ok to 1 for non bare repos operaion
+ * Not yet sure, if that is usefull or makes sense.
+ */
+static int update_head_ok = 0;
 static int write_fetch_head = 1;
 static int verbosity, deepen_relative, set_upstream, refetch;
 static int progress = -1;
@@ -1716,7 +1719,7 @@ out:
 	return retcode;
 }
 
-static int do_fetch(struct transport *transport,
+static int do_retire(struct transport *transport,
 		    struct refspec *rs,
 		    const struct fetch_config *config)
 {
@@ -1989,55 +1992,10 @@ cleanup:
 	return retcode;
 }
 
-static int get_one_remote_for_fetch(struct remote *remote, void *priv)
-{
-	struct string_list *list = priv;
-	if (!remote->skip_default_update)
-		string_list_append(list, remote->name);
-	return 0;
-}
-
 struct remote_group_data {
 	const char *name;
 	struct string_list *list;
 };
-
-static int get_remote_group(const char *key, const char *value,
-			    const struct config_context *ctx UNUSED,
-			    void *priv)
-{
-	struct remote_group_data *g = priv;
-
-	if (skip_prefix(key, "remotes.", &key) && !strcmp(key, g->name)) {
-		/* split list by white space */
-		while (*value) {
-			size_t wordlen = strcspn(value, " \t\n");
-
-			if (wordlen >= 1)
-				string_list_append_nodup(g->list,
-						   xstrndup(value, wordlen));
-			value += wordlen + (value[wordlen] != '\0');
-		}
-	}
-
-	return 0;
-}
-
-static int add_remote_or_group(const char *name, struct string_list *list)
-{
-	int prev_nr = list->nr;
-	struct remote_group_data g;
-	g.name = name; g.list = list;
-
-	repo_config(the_repository, get_remote_group, &g);
-	if (list->nr == prev_nr) {
-		struct remote *remote = remote_get(name);
-		if (!remote_is_configured(remote, 0))
-			return 0;
-		string_list_append(list, remote->name);
-	}
-	return 1;
-}
 
 static void add_options_to_argv(struct strvec *argv,
 				const struct fetch_config *config)
@@ -2088,116 +2046,6 @@ struct parallel_fetch_state {
 	int next, result;
 	const struct fetch_config *config;
 };
-
-static int fetch_next_remote(struct child_process *cp,
-			     struct strbuf *out UNUSED,
-			     void *cb, void **task_cb)
-{
-	struct parallel_fetch_state *state = cb;
-	char *remote;
-
-	if (state->next < 0 || state->next >= state->remotes->nr)
-		return 0;
-
-	remote = state->remotes->items[state->next++].string;
-	*task_cb = remote;
-
-	strvec_pushv(&cp->args, state->argv);
-	strvec_push(&cp->args, remote);
-	cp->git_cmd = 1;
-
-	if (verbosity >= 0 && state->config->display_format != DISPLAY_FORMAT_PORCELAIN)
-		printf(_("Fetching %s\n"), remote);
-
-	return 1;
-}
-
-static int fetch_failed_to_start(struct strbuf *out UNUSED,
-				 void *cb, void *task_cb)
-{
-	struct parallel_fetch_state *state = cb;
-	const char *remote = task_cb;
-
-	state->result = error(_("could not fetch %s"), remote);
-
-	return 0;
-}
-
-static int fetch_finished(int result, struct strbuf *out,
-			  void *cb, void *task_cb)
-{
-	struct parallel_fetch_state *state = cb;
-	const char *remote = task_cb;
-
-	if (result) {
-		strbuf_addf(out, _("could not fetch '%s' (exit code: %d)\n"),
-			    remote, result);
-		state->result = -1;
-	}
-
-	return 0;
-}
-
-static int fetch_multiple(struct string_list *list, int max_children,
-			  const struct fetch_config *config)
-{
-	int i, result = 0;
-	struct strvec argv = STRVEC_INIT;
-
-	if (!append && write_fetch_head) {
-		int errcode = truncate_fetch_head();
-		if (errcode)
-			return errcode;
-	}
-
-	/*
-	 * Cancel out the fetch.bundleURI config when running subprocesses,
-	 * to avoid fetching from the same bundle list multiple times.
-	 */
-	strvec_pushl(&argv, "-c", "fetch.bundleURI=",
-		     "fetch", "--append", "--no-auto-gc",
-		     "--no-write-commit-graph", NULL);
-	for (i = 0; i < server_options.nr; i++)
-		strvec_pushf(&argv, "--server-option=%s", server_options.items[i].string);
-	add_options_to_argv(&argv, config);
-
-	if (max_children != 1 && list->nr != 1) {
-		struct parallel_fetch_state state = { argv.v, list, 0, 0, config };
-		const struct run_process_parallel_opts opts = {
-			.tr2_category = "fetch",
-			.tr2_label = "parallel/fetch",
-
-			.processes = max_children,
-
-			.get_next_task = &fetch_next_remote,
-			.start_failure = &fetch_failed_to_start,
-			.task_finished = &fetch_finished,
-			.data = &state,
-		};
-
-		strvec_push(&argv, "--end-of-options");
-
-		run_processes_parallel(&opts);
-		result = state.result;
-	} else
-		for (i = 0; i < list->nr; i++) {
-			const char *name = list->items[i].string;
-			struct child_process cmd = CHILD_PROCESS_INIT;
-
-			strvec_pushv(&cmd.args, argv.v);
-			strvec_push(&cmd.args, name);
-			if (verbosity >= 0 && config->display_format != DISPLAY_FORMAT_PORCELAIN)
-				printf(_("Fetching %s\n"), name);
-			cmd.git_cmd = 1;
-			if (run_command(&cmd)) {
-				error(_("could not fetch %s"), name);
-				result = 1;
-			}
-		}
-
-	strvec_clear(&argv);
-	return !!result;
-}
 
 /*
  * Fetching from the promisor remote should use the given filter-spec
@@ -2312,7 +2160,7 @@ static int fetch_one(struct remote *remote, int argc, const char **argv,
 	sigchain_push_common(unlock_pack_on_signal);
 	atexit(unlock_pack_atexit);
 	sigchain_push(SIGPIPE, SIG_IGN);
-	exit_code = do_fetch(gtransport, &rs, config);
+	exit_code = do_retire(gtransport, &rs, config);
 	sigchain_pop(SIGPIPE);
 	refspec_clear(&rs);
 	transport_disconnect(gtransport);
@@ -2336,9 +2184,9 @@ int cmd_retire(int argc,
 	};
 	const char *submodule_prefix = "";
 	const char *bundle_uri;
-	struct string_list list = STRING_LIST_INIT_DUP;
+	char *cwd = xgetcwd();
+	char *urlbuf;
 	struct remote *remote = NULL;
-	int all = -1, multiple = 0;
 	int result = 0;
 	int prune_tags_ok = 1;
 	int enable_auto_gc = 1;
@@ -2354,8 +2202,6 @@ int cmd_retire(int argc,
 
 	struct option builtin_retire_options[] = {
 		OPT__VERBOSITY(&verbosity),
-		OPT_BOOL(0, "all", &all,
-			 N_("fetch from all remotes")),
 		OPT_BOOL(0, "set-upstream", &set_upstream,
 			 N_("set upstream for git pull/fetch")),
 		OPT_BOOL('a', "append", &append,
@@ -2365,8 +2211,6 @@ int cmd_retire(int argc,
 		OPT_STRING(0, "upload-pack", &upload_pack, N_("path"),
 			   N_("path to upload pack on remote end")),
 		OPT__FORCE(&force, N_("force overwrite of local reference"), 0),
-		OPT_BOOL('m', "multiple", &multiple,
-			 N_("fetch from multiple remotes")),
 		OPT_SET_INT('t', "tags", &tags,
 			    N_("fetch all tags and associated objects"), TAGS_SET),
 		OPT_SET_INT('n', NULL, &tags,
@@ -2551,50 +2395,27 @@ int cmd_retire(int argc,
 	    fetch_bundle_uri(the_repository, bundle_uri, NULL))
 		warning(_("failed to fetch bundles from '%s'"), bundle_uri);
 
-	if (all < 0) {
-		/*
-		 * no --[no-]all given;
-		 * only use config option if no remote was explicitly specified
-		 */
-		all = (!argc) ? config.all : 0;
-	}
+	/* set self as remote */
+	if (the_repository->gitdir) {
+		int cwdlen = strlen(cwd);
+		int gitdirlen = strlen(the_repository->gitdir);
 
-	if (all) {
-		if (argc == 1)
-			die(_("fetch --all does not take a repository argument"));
-		else if (argc > 1)
-			die(_("fetch --all does not make sense with refspecs"));
-
-		(void) for_each_remote(get_one_remote_for_fetch, &list);
-
-		/* do not do fetch_multiple() of one */
-		if (list.nr == 1)
-			remote = remote_get(list.items[0].string);
-	} else if (argc == 0) {
-		/* No arguments -- use default remote */
-		remote = remote_get(NULL);
-	} else if (multiple) {
-		/* All arguments are assumed to be remotes or groups */
-		for (i = 0; i < argc; i++)
-			if (!add_remote_or_group(argv[i], &list))
-				die(_("no such remote or remote group: %s"),
-				    argv[i]);
-	} else {
-		/* Single remote or group */
-		(void) add_remote_or_group(argv[0], &list);
-		if (list.nr > 1) {
-			/* More than one remote */
-			if (argc > 1)
-				die(_("fetching a group and specifying refspecs does not make sense"));
-		} else {
-			/* Zero or one remotes */
-			remote = remote_get(argv[0]);
-			prune_tags_ok = (argc == 1);
-			argc--;
-			argv++;
+		if (the_repository->gitdir[0] == '/')
+			die(_("absolute git directory '%s'"), the_repository->gitdir);
+		else {
+			urlbuf = (char *)malloc(cwdlen + gitdirlen + 9);
+			snprintf(urlbuf, cwdlen + gitdirlen + 9, "file://%s/%s", cwd, the_repository->gitdir);
 		}
-	}
-	string_list_remove_duplicates(&list, 0);
+	} else
+		die(_("git directory not defined"));
+
+	remote = remote_get("self");
+
+	strvec_clear(&remote->url);
+	strvec_push(&remote->url, urlbuf);
+	refspec_append(&remote->fetch, "+refs/heads/*:refs/heads/*");
+
+	prune_tags_ok = (argc == 1);
 
 	if (negotiate_only) {
 		struct oidset acked_commits = OIDSET_INIT;
@@ -2650,11 +2471,6 @@ int cmd_retire(int argc,
 
 		if (max_children < 0)
 			max_children = config.parallel;
-
-		/* TODO should this also die if we have a previous partial-clone? */
-		trace2_region_enter("fetch", "fetch-multiple", the_repository);
-		result = fetch_multiple(&list, max_children, &config);
-		trace2_region_leave("fetch", "fetch-multiple", the_repository);
 	}
 
 	/*
@@ -2739,6 +2555,5 @@ int cmd_retire(int argc,
 	}
 
  cleanup:
-	string_list_clear(&list, 0);
 	return result;
 }
